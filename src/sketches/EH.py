@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from collections import deque
 import math
 
@@ -45,7 +44,7 @@ class BinaryCountEH(object):
                 break
 
     def add_new_bucket(self, timestamp):
-        self.buckets.append(self.Bucket(timestamp, 1))
+        self.buckets.append(Bucket(timestamp, 1))
         self.total += 1
 
     def merge_buckets(self):
