@@ -6,7 +6,7 @@ import math
 # ... b2^3 b2^2 b2^1 b2^0
 
 # todo update struct for buckets to allow for constant delete time
-
+# todo document
 
 class Bucket(object):
 
@@ -91,7 +91,7 @@ class BinaryExactWindow(object):
         self.maxElems = size
 
     def add(self, element):
-        self.buffer.appendleft(element)
+        self.buffer.append(element)
         if len(self.buffer) > self.maxElems:
             elemRemoved = self.buffer.pop()
             if elemRemoved:
@@ -112,20 +112,22 @@ class IntCountEH(BinaryCountEH):
     def __init__(self, n, eps):
         super().__init__(n, eps)
         self.maxBufferSize = math.log2(n)
-        self.buffer = list()
+        self.buffer = deque()
         self.bufferSum = 0
 
     def add(self, timestamp, number):
-        # insert number bucket in buffer (bucket only contains an int)
-        self.buffer.append(Bucket(timestamp, number))
+        if not number:
+            return
+        # insert number bucket in buffer (bucket only contains an int). Most recent items to the right.
+        self.buffer.appendleft(Bucket(timestamp, number))
         self.bufferSum += number
         if len(self.buffer) == self.maxBufferSize:
             # remove expired buckets
             self.remove_expired_buckets(timestamp)
             # compute l-canonical
             lCanonical = self.l_canonical(self.total + self.bufferSum)
-            # todo create new EH, empty buffer
-            pass
+            self.buckets_from_lcanonical(lCanonical)
+            self.buffer.clear()
 
     def l_canonical(self, totalSum):
         """ Returns the l-canonical representation of a positive integer 'totalSum'. The representation is equivalent
@@ -144,13 +146,52 @@ class IntCountEH(BinaryCountEH):
         num = totalSum + self.bucketThreshold
         den = 1 + self.bucketThreshold
         j = int(math.log2(num / den))
-        # note: (1 << j) is equivalent to (1 * (2^j))
-        posInGroup = num - (den << j)
-        # we take advantage of the fact that n mod (2^j) = n & (2^j - 1)
-        posMod = posInGroup & ((1 << j) - 1)
+        posInGroup = num - (den * (2**j))
+        posMod = posInGroup % (2**j)
         lCanonical = [self.bucketThreshold + little_endian_bit(posMod, nBit) for nBit in range(j)]
-        lCanonical.append(math.floor(posInGroup / (1 << j)) + 1)
+        lCanonical.append(math.floor(posInGroup / (2**j)) + 1)
         return lCanonical
+
+    def buckets_from_lcanonical(self, lCanonical):
+        """ Overwrites self.buckets with a valid EH histogram taking into account its l-canonical representation
+            and the timestamps of the buckets in both the previous EH and the buffer. """
+        if not lCanonical:
+            return deque()
+        else:
+            bucketsAndBuffer = self.buckets + self.buffer
+            self.buckets.clear()
+            for i, nBuckets in enumerate(lCanonical):
+                for _ in range(nBuckets):
+                    self.buckets.appendleft(self.extract_bucket(bucketsAndBuffer, 2 ** i))
+            return
+
+    def extract_bucket(self, bucketsAndBuffer, bucketSize):
+        timestamp = bucketsAndBuffer[-1].timestamp
+        self.deque_popper(bucketsAndBuffer, bucketSize)
+        return Bucket(timestamp, bucketSize)
+
+    def deque_popper(self, dequeObj, nElems):
+        """ If the sum of the values of dequeObj is n, deque_popper returns a deque that sums n - nElems. It performs
+        substractions and / or pops on the most right hand-side elements of the deque. For example:
+            deque_popper(deque([1, 2]), 1) = deque([1, 1])
+            deque_popper(deque([1, 2]), 2) = deque([1])
+            deque_popper(deque([1, 2]), 3) = deque([])
+
+        The method will never pop an empty deque: the sum of the elements in 'dequeObj' is equal to sum(k_i * 2^i),
+        i = [0, ..., j], k_i is each entry of the l-canonical representation. Thus, from the way it's called,
+        exactly sum(k_i * 2^i) elements will be substracted from 'dequeObj' (nElems is 2^i). """
+
+        if not dequeObj:
+            raise Exception('Empty deque: invalid l-canonical representation.')
+        if dequeObj[-1].count == nElems:
+            dequeObj.pop()
+        elif dequeObj[-1].count > nElems:
+            dequeObj[-1].count -= nElems
+        else:
+            nElems -= dequeObj[-1].count
+            dequeObj.pop()
+            self.deque_popper(dequeObj, nElems)
+        return
 
     def get_estimate(self):
         if self.buckets_count() == 0:
