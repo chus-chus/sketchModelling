@@ -1,5 +1,5 @@
 import random
-from src.sketches.EH import BinaryExactWindow, BinaryCountEH
+from src.sketches.EH import BinaryExactWindow, BinaryCounterEH
 
 random.seed(888)
 
@@ -8,7 +8,7 @@ if __name__ == "__main__":
     nElems = 100000
     windowLen = 10000
     eps = 0.01
-    hist = BinaryCountEH(windowLen, eps)
+    hist = BinaryCounterEH(windowLen, eps)
 
     exactWindow = BinaryExactWindow(windowLen)
     sumRelativeError = 0

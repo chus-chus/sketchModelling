@@ -15,7 +15,7 @@ class Bucket(object):
         self.count = count
 
 
-class BinaryCountEH(object):
+class BinaryCounterEH(object):
 
     def __init__(self, n, eps):
         self.total = 0
@@ -36,7 +36,6 @@ class BinaryCountEH(object):
         self.merge_buckets()
 
     def remove_expired_buckets(self, timestamp):
-        # check if empty
         if not self.buckets:
             return
         while len(self.buckets) != 0:
@@ -103,31 +102,30 @@ class BinaryExactWindow(object):
         return self.nElems
 
 
-class IntCountEH(BinaryCountEH):
-    """ An EH devised for counting where elements added are integers. The idea is to treat each new element
+class NaturalCounterEH(BinaryCounterEH):
+    """ An EH devised for counting where elements added are naturals. The idea is to treat each new element
         (elem, timestamp) as a series of 1s with the same timestamp. In order to maintain the EH with small amortized
         time, a buffer is used to keep some elements. When the buffer is full, a new EH is created from the bucket
         and the previous EH using what's called the 'l-canonical' representation. """
 
     def __init__(self, n, eps):
         super().__init__(n, eps)
-        self.maxBufferSize = math.log2(n)
+        self.maxBufferSize = math.floor(math.log2(n))
         self.buffer = deque()
         self.bufferSum = 0
 
     def add(self, timestamp, number):
         if not number:
             return
-        # insert number bucket in buffer (bucket only contains an int). Most recent items to the right.
+        # bucket appended (most recent items to the right) contains an int and its timestamp.
         self.buffer.appendleft(Bucket(timestamp, number))
         self.bufferSum += number
         if len(self.buffer) == self.maxBufferSize:
-            # remove expired buckets
             self.remove_expired_buckets(timestamp)
-            # compute l-canonical
-            lCanonical = self.l_canonical(self.total + self.bufferSum)
-            self.buckets_from_lcanonical(lCanonical)
+            self.total += self.bufferSum
+            self.buckets_from_lcanonical(self.l_canonical(self.total))
             self.buffer.clear()
+            self.bufferSum = 0
 
     def l_canonical(self, totalSum):
         """ Returns the l-canonical representation of a positive integer 'totalSum'. The representation is equivalent
