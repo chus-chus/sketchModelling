@@ -9,24 +9,24 @@ the step our algorithm is in (1 item inserted, 2 items inserted, ...). For examp
 (example from [Twitter's Algebird](https://twitter.github.io/algebird/datatypes/approx/exponential_histogram.html):
 
             Size of buckets
-    Step 1:      1
-         2:      2
-         3:      3
+    Step 1:      1          | Group 0
+         2:      2          |
+         3:      3          |
 
-         4:      2 1
-         5:      3 1
-         6:      2 2
-         7:      3 2
-         8:      2 3
-         9:      3 3
+         4:      2 1        | Group 1
+         5:      3 1        |
+         6:      2 2        |
+         7:      3 2        |
+         8:      2 3        |
+         9:      3 3        |
 
-         10:     2 2 1
-         11:     3 2 1
-         12:     2 3 1
-         13:     3 3 1
-         14:     2 2 2
-         15:     3 2 2
-         ...
+         10:     2 2 1      | Group 2
+         11:     3 2 1      |
+         12:     2 3 1      |
+         13:     3 3 1      |
+         14:     2 2 2      |
+         15:     3 2 2      |
+         ...                ·
 
 So, there is a distinct l-canonical representation for each 'size' of an EH (step). Then, we first need to 
 find in what group our natural number S (the size of the new EH) lies into: that is what `j` is for.

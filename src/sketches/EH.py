@@ -1,3 +1,5 @@
+# author: Jesus Antonanzas
+
 from collections import deque
 import math
 
@@ -16,6 +18,8 @@ class Bucket(object):
 
 
 class BinaryCounterEH(object):
+    """ Solves the Basic Counting problem, counting the number of elements in a window of length n with a relative error
+        eps. """
 
     def __init__(self, n, eps):
         self.total = 0
@@ -23,7 +27,7 @@ class BinaryCounterEH(object):
         self.eps = eps
         self.buckets = deque()
         self.k = math.ceil(1 / self.eps)
-        self.bucketThreshold = math.ceil(0.5 * self.k) + 2
+        self.bucketThreshold = math.ceil(self.k / 2) + 2
 
     def buckets_count(self):
         return len(self.buckets)
@@ -83,33 +87,16 @@ class BinaryCounterEH(object):
             return int(self.total - self.buckets[0].count / 2)
 
 
-class BinaryExactWindow(object):
-    def __init__(self, size):
-        self.nElems = 0
-        self.buffer = deque()
-        self.maxElems = size
-
-    def add(self, element):
-        self.buffer.append(element)
-        if len(self.buffer) > self.maxElems:
-            elemRemoved = self.buffer.pop()
-            if elemRemoved:
-                self.nElems -= 1
-        if element:
-            self.nElems += 1
-
-    def query(self):
-        return self.nElems
-
-
-class NaturalCounterEH(BinaryCounterEH):
-    """ An EH devised for counting where elements added are naturals. The idea is to treat each new element
-        (elem, timestamp) as a series of 1s with the same timestamp. In order to maintain the EH with small amortized
-        time, a buffer is used to keep some elements. When the buffer is full, a new EH is created from the bucket
-        and the previous EH using what's called the 'l-canonical' representation. """
+class IntSumEH(BinaryCounterEH):
+    """ An EH devised for counting where elements added are positive integers within a relative error eps.
+        The idea is to treat each new element (elem, timestamp) as a series of 1s with the same timestamp.
+        In order to maintain the EH with small amortized time, a buffer is used to keep some elements.
+        When the buffer is full, a new EH is created from the bucket and the previous EH using what's called
+        the 'l-canonical' representation. """
 
     def __init__(self, n, eps):
         super().__init__(n, eps)
+        self.lVal = math.ceil(self.k / 2)
         self.maxBufferSize = math.floor(math.log2(n))
         self.buffer = deque()
         self.bufferSum = 0
@@ -123,15 +110,13 @@ class NaturalCounterEH(BinaryCounterEH):
         if len(self.buffer) == self.maxBufferSize:
             self.remove_expired_buckets(timestamp)
             self.total += self.bufferSum
-            self.buckets_from_lcanonical(self.l_canonical(self.total))
-            self.buffer.clear()
-            self.bufferSum = 0
+            self.rebucket_from_lcanonical(self.l_canonical(self.total))
 
     def l_canonical(self, totalSum):
         """ Returns the l-canonical representation of a positive integer 'totalSum'. The representation is equivalent
             to knowing the number k_i of buckets of size 2^i, i=0,1,...,n given the number of elements in the EH.
-            That is, [k_0, k_1, ..., k_n]. l + 1 stands for the maximum number of buckets of each size. See the README
-            file for a basic understanding of the intuition behind the algorithm.
+            That is, [k_0, k_1, ..., k_n]. l + 1 stands for the maximum number of buckets allowed of each size. See the
+            README file for a basic understanding of the intuition behind the algorithm.
 
             This implementation uses some clever manipulations from Twitter's Algebird. Thank you! """
 
@@ -141,26 +126,29 @@ class NaturalCounterEH(BinaryCounterEH):
 
         if totalSum == 0:
             return []
-        num = totalSum + self.bucketThreshold
-        den = 1 + self.bucketThreshold
+        num = totalSum + self.lVal
+        den = 1 + self.lVal
         j = int(math.log2(num / den))
         posInGroup = num - (den * (2**j))
         posMod = posInGroup % (2**j)
-        lCanonical = [self.bucketThreshold + little_endian_bit(posMod, nBit) for nBit in range(j)]
+        lCanonical = [self.lVal + little_endian_bit(posMod, nBit) for nBit in range(j)]
         lCanonical.append(math.floor(posInGroup / (2**j)) + 1)
         return lCanonical
 
-    def buckets_from_lcanonical(self, lCanonical):
+    def rebucket_from_lcanonical(self, lCanonical):
         """ Overwrites self.buckets with a valid EH histogram taking into account its l-canonical representation
-            and the timestamps of the buckets in both the previous EH and the buffer. """
+            and the timestamps of the buckets in both the previous EH and the buffer. Empties buffer."""
         if not lCanonical:
             return deque()
         else:
+            # decreasingly ordered by timestamp
             bucketsAndBuffer = self.buckets + self.buffer
             self.buckets.clear()
+            self.buffer.clear()
+            self.bufferSum = 0
             for i, nBuckets in enumerate(lCanonical):
                 for _ in range(nBuckets):
-                    self.buckets.appendleft(self.extract_bucket(bucketsAndBuffer, 2 ** i))
+                    self.buckets.appendleft(self.extract_bucket(bucketsAndBuffer, 2**i))
             return
 
     def extract_bucket(self, bucketsAndBuffer, bucketSize):
@@ -196,3 +184,41 @@ class NaturalCounterEH(BinaryCounterEH):
             return self.bufferSum
         else:
             return int(self.total - self.buckets[0].count / 2) + self.bufferSum
+
+
+class IntMeanEH(object):
+    """ Keeps track of the mean of the elements (positive integers) in a window of size n with a relative error very
+        close to eps. """
+    def __init__(self, n, eps):
+        self.sumEH = IntSumEH(n, eps)
+        self.nElemsEH = BinaryCounterEH(n, eps)
+
+    def add(self, timestamp, number):
+        if not number:
+            return
+        self.sumEH.add(timestamp, number)
+        self.nElemsEH.add(timestamp, 1)
+
+    def get_estimate(self):
+        nItems = self.nElemsEH.get_estimate()
+        return 0 if not nItems else self.sumEH.get_estimate() / nItems
+
+
+class BinaryExactWindow(object):
+    """ Keeps track of the exact number of elements in a window of size n. """
+    def __init__(self, n):
+        self.nElems = 0
+        self.buffer = deque()
+        self.maxElems = n
+
+    def add(self, element):
+        self.buffer.append(element)
+        if len(self.buffer) > self.maxElems:
+            elemRemoved = self.buffer.pop()
+            if elemRemoved:
+                self.nElems -= 1
+        if element:
+            self.nElems += 1
+
+    def query(self):
+        return self.nElems
