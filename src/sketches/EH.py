@@ -9,6 +9,8 @@ import math
 
 # todo update struct for buckets to allow for constant delete time
 # todo document
+# todo update to R
+# todo add support for negatives
 
 class Bucket(object):
 
@@ -86,29 +88,40 @@ class BinaryCounterEH(object):
         else:
             return int(self.total - self.buckets[0].count / 2)
 
+    def empty(self):
+        return True if len(self.buckets) == 0 else False
 
-class IntSumEH(BinaryCounterEH):
-    """ An EH devised for counting where elements added are positive integers within a relative error eps.
+
+class SumEH(BinaryCounterEH):
+    """ An EH devised for counting where elements added are positive within a relative error eps.
         The idea is to treat each new element (elem, timestamp) as a series of 1s with the same timestamp.
         In order to maintain the EH with small amortized time, a buffer is used to keep some elements.
         When the buffer is full, a new EH is created from the bucket and the previous EH using what's called
         the 'l-canonical' representation. """
 
-    def __init__(self, n, eps):
+    def __init__(self, n, eps, isReal=False, resolution=100):
         super().__init__(n, eps)
+        self.isReal = isReal
+        self.resolution = resolution
         self.lVal = math.ceil(self.k / 2)
         self.maxBufferSize = math.floor(math.log2(n))
         self.buffer = deque()
         self.bufferSum = 0
 
     def add(self, timestamp, number):
+        """ Add a positive integer to the window """
+        self.remove_expired_buckets(timestamp)
+        if self.isReal:
+            number = int(number * self.resolution)
         if not number:
             return
         # bucket appended (most recent items to the right) contains an int and its timestamp.
         self.buffer.appendleft(Bucket(timestamp, number))
         self.bufferSum += number
+        # todo remove expired buckets every n events even if numbers arriving are 0
+        # todo check if maxBufferSize refers to sum or nElems
+        # todo check problems if a lot of elems are 0 (keeps the mean until a non-zero elem arrives)
         if len(self.buffer) == self.maxBufferSize:
-            self.remove_expired_buckets(timestamp)
             self.total += self.bufferSum
             self.rebucket_from_lcanonical(self.l_canonical(self.total))
 
@@ -182,15 +195,20 @@ class IntSumEH(BinaryCounterEH):
     def get_estimate(self):
         if self.buckets_count() == 0:
             return self.bufferSum
+        elif self.isReal:
+            return (int(self.total - self.buckets[0].count / 2) + self.bufferSum) / self.resolution
         else:
             return int(self.total - self.buckets[0].count / 2) + self.bufferSum
 
+    def empty(self):
+        return True if len(self.buckets) == 0 and len(self.buffer) == 0 else False
 
-class IntMeanEH(object):
+
+class MeanEH(object):
     """ Keeps track of the mean of the elements (positive integers) in a window of size n with a relative error very
         close to eps. """
-    def __init__(self, n, eps):
-        self.sumEH = IntSumEH(n, eps)
+    def __init__(self, n, eps, isReal=False, resolution=100):
+        self.sumEH = SumEH(n, eps, isReal, resolution)
         self.nElemsEH = BinaryCounterEH(n, eps)
 
     def add(self, timestamp, number):
@@ -202,6 +220,9 @@ class IntMeanEH(object):
     def get_estimate(self):
         nItems = self.nElemsEH.get_estimate()
         return 0 if not nItems else self.sumEH.get_estimate() / nItems
+
+    def empty(self):
+        return self.sumEH.empty()
 
 
 class BinaryExactWindow(object):
@@ -222,3 +243,24 @@ class BinaryExactWindow(object):
 
     def query(self):
         return self.nElems
+
+    def empty(self):
+        return True if self.nElems == 0 else False
+
+
+class SumExactWindow(BinaryExactWindow):
+    def __init__(self, n):
+        super().__init__(n)
+
+    def query(self):
+        return sum(self.buffer)
+
+
+class MeanExactWindow(BinaryExactWindow):
+    def __init__(self, n):
+        super().__init__(n)
+
+    def query(self):
+        return sum(self.buffer) / self.nElems
+
+    # todo test with real numbers
