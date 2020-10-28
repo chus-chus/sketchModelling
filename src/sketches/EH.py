@@ -9,8 +9,9 @@ import math
 
 # todo update struct for buckets to allow for constant delete time
 # todo document
-# todo update to R
-# todo add support for negatives
+# todo test with real numbers > 0
+# todo merge sumEH and meanEH
+
 
 class Bucket(object):
 
@@ -111,10 +112,10 @@ class SumEH(BinaryCounterEH):
     def add(self, timestamp, number):
         """ Add a positive integer to the window """
         self.remove_expired_buckets(timestamp)
-        if self.isReal:
-            number = int(number * self.resolution)
         if not number:
             return
+        if self.isReal:
+            number = int(number * self.resolution)
         # bucket appended (most recent items to the right) contains an int and its timestamp.
         self.buffer.appendleft(Bucket(timestamp, number))
         self.bufferSum += number
@@ -193,12 +194,16 @@ class SumEH(BinaryCounterEH):
         return
 
     def get_estimate(self):
-        if self.buckets_count() == 0:
-            return self.bufferSum
-        elif self.isReal:
-            return (int(self.total - self.buckets[0].count / 2) + self.bufferSum) / self.resolution
+        if self.isReal:
+            if self.buckets_count() == 0:
+                return self.bufferSum / self.resolution
+            else:
+                return (int(self.total - self.buckets[0].count / 2) + self.bufferSum) / self.resolution
         else:
-            return int(self.total - self.buckets[0].count / 2) + self.bufferSum
+            if self.buckets_count() == 0:
+                return self.bufferSum
+            else:
+                return int(self.total - self.buckets[0].count / 2) + self.bufferSum
 
     def empty(self):
         return True if len(self.buckets) == 0 and len(self.buffer) == 0 else False
@@ -225,15 +230,15 @@ class MeanEH(object):
         return self.sumEH.empty()
 
 
-class BinaryExactWindow(object):
-    """ Keeps track of the exact number of elements in a window of size n. """
+class ExactWindow(object):
+    """ Keeps track of the elements in a window of size n. """
     def __init__(self, n):
         self.nElems = 0
         self.buffer = deque()
         self.maxElems = n
 
     def add(self, element):
-        self.buffer.append(element)
+        self.buffer.appendleft(element)
         if len(self.buffer) > self.maxElems:
             elemRemoved = self.buffer.pop()
             if elemRemoved:
@@ -241,26 +246,14 @@ class BinaryExactWindow(object):
         if element:
             self.nElems += 1
 
-    def query(self):
+    def n_elems(self):
         return self.nElems
+
+    def sum(self):
+        return sum(self.buffer)
+
+    def mean(self):
+        return sum(self.buffer) / self.nElems
 
     def empty(self):
         return True if self.nElems == 0 else False
-
-
-class SumExactWindow(BinaryExactWindow):
-    def __init__(self, n):
-        super().__init__(n)
-
-    def query(self):
-        return sum(self.buffer)
-
-
-class MeanExactWindow(BinaryExactWindow):
-    def __init__(self, n):
-        super().__init__(n)
-
-    def query(self):
-        return sum(self.buffer) / self.nElems
-
-    # todo test with real numbers

@@ -4,7 +4,7 @@ import random
 import itertools
 import matplotlib.pyplot as plt
 
-from src.sketches.EH import IntMeanEH, IntSumEH
+from src.sketches.EH import MeanEH, SumEH
 
 
 def concept1(value):
