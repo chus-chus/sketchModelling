@@ -11,6 +11,7 @@ import math
 # todo document
 # todo test with real numbers > 0
 # todo merge sumEH and meanEH
+# todo assert isinstace of values passed
 
 
 class Bucket(object):

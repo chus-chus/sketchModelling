@@ -49,25 +49,39 @@ def incremental_drift(conceptChangeRange, concept1Offset, concept2Offset):
     return incrementalDrift
 
 
-def apply_increasing_mean_EH(data, windowLengthsList, eps):
-    hists = [MeanEH(windowLength, eps) for windowLength in windowLengthsList]
+def apply_increasing_mean_EH(data, windowLengthsList, eps, realNums=False, res=100):
+    # assumes target is at the end!
+    names = None
+    if isinstance(data, pd.DataFrame):
+        names = data.columns
+        data = np.array(data)
+    if names is not None:
+        colNames = [featureName + '_' + str(windowLen)
+                    for featureName in list(names[:-1])
+                    for windowLen in windowLengthsList]
+    else:
+        colNames = ['f' + str(featurePos) + '_' + str(windowLen)
+                    for featurePos in range(1, len(data[0]))
+                    for windowLen in windowLengthsList]
+    # n histograms for each feature
+    hists = [[MeanEH(windowLength, eps, isReal=realNums, resolution=res) for windowLength in windowLengthsList] for _ in range(len(data[0])-1)]
     means = []
     for i in range(len(data)):
         for j in range(len(windowLengthsList)):
-            hists[j].add(i, data[i][0])
+            for x in range(len(data[0]) - 1):
+                hists[x][j].add(i, data[i][x])
         if i >= windowLengthsList[-1]:
-            point = []
-            for windowIndex in range(len(windowLengthsList)):
-                if not hists[windowIndex].empty():
-                    point.append(hists[windowIndex].get_estimate())
-                else:
-                    point.append(0)
-            means.append(pd.DataFrame(data=[point],
-                                      columns=['window_' + str(windowLengthsList[t])
-                                               for t in range(len(windowLengthsList))]))
+            point = [[] for _ in range(len(data[0]) - 1)]
+            for x in range(len(data[0]) - 1):
+                for windowIndex in range(len(windowLengthsList)):
+                    if not hists[x][windowIndex].empty():
+                        point[x].append(hists[x][windowIndex].get_estimate())
+                    else:
+                        point[x].append(0)
+            point = [item for feature in point for item in feature]
+            means.append(pd.DataFrame(data=[point], columns=colNames))
     meanDf = pd.concat(means, ignore_index=True)
-    data = np.array(data)
-    meanDf['target'] = data[windowLengthsList[-1]:, 1].astype(int)
+    meanDf[names[-1]] = data[windowLengthsList[-1]:, -1].astype(int)
     return meanDf
 
 
@@ -229,7 +243,6 @@ def plot_results_means():
                 y='value',
                 color='metrics'
             )).show()
-
 
 
 if __name__ == "__main__":
