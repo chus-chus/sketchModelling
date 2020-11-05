@@ -1,5 +1,7 @@
 
 import os
+import argparse
+import numpy as np
 
 # @author Jesus Antonanzas
 
@@ -71,15 +73,27 @@ def pd_to_arff(df, name, path, targetType='NOMINAL', targetValues=None):
 				if targetType == 'ORDINAL':
 					attrType = str({value for value in targetValues}).replace(' ', '').replace("'", '')
 			outFile.write('@ATTRIBUTE ' + attrName + ' ' + attrType + '\n')
+
+		outFile.write('@DATA\n')
 		for row in content:
-			outFile.write(str(row).replace('  ', ',').replace(' ', ',').replace('[', '').replace(']', '') + '\n')
+			outFile.write(str(row).replace('  ', ',').replace(' ', ',').replace('[', '').replace(']', '').replace("'", '').replace("\n", '') + '\n')
 
 
 if __name__ == "__main__":
-	# Getting all the csv files from the current directory
-	files = [csv for csv in os.listdir('.') if csv.endswith(".csv")]
+	parser = argparse.ArgumentParser(description='Process some integers.')
 
-	for file in files:
-		csv_to_arff(file)
+	parser.add_argument('--filename', metavar='f', type=str, default=None)
+
+	args = parser.parse_args()
+
+	if args.filename is None:
+		# Getting all the csv files from the current directory
+		files = [csv for csv in os.listdir('.') if csv.endswith(".csv")]
+
+		for file in files:
+			csv_to_arff(file)
+
+	else:
+		csv_to_arff(args.filename, targetType='ORDINAL', targetValues=[0, 1])
 
 

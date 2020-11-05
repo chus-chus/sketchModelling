@@ -81,7 +81,7 @@ def apply_increasing_mean_EH(data, windowLengthsList, eps, realNums=False, res=1
             point = [item for feature in point for item in feature]
             means.append(pd.DataFrame(data=[point], columns=colNames))
     meanDf = pd.concat(means, ignore_index=True)
-    meanDf[names[-1]] = data[windowLengthsList[-1]:, -1].astype(int)
+    meanDf[names[-1]] = data[windowLengthsList[-1]:, -1]
     return meanDf
 
 
