@@ -12,7 +12,7 @@ For now, these are the sketches and functionalities included:
         - Positive integers [[1]](#1)
         - Extension over positive real numbers (own)
     - Mean (positive real)
-    - (in construction) Variance and k-medians [[2]](#2)
+    - (in construction) Variance [[2]](#2)
 
 - **Other utils**
     - DataFrame sketch windower: returns a ``pandas.DataFrame`` with the results of applying a 
@@ -23,8 +23,6 @@ For now, these are the sketches and functionalities included:
         (``arff`` is a data format used by ML frameworks such as [Weka](https://www.cs.waikato.ac.nz/ml/weka/) and 
         [MOA](https://moa.cms.waikato.ac.nz/))
         
-That we could find, this is the only Python implementation of most of the above structures.
-
 **WARNING**: constant updates coming!
 
 ## References
