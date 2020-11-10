@@ -1,8 +1,7 @@
 # author: Jesus Antonanzas
 
 from collections import deque
-import math
-
+from math import ceil, floor, log2
 
 # Older buckets are to the left. The most recent ones are to the right:
 # ... b2^3 b2^2 b2^1 b2^0
@@ -30,8 +29,8 @@ class BinaryCounterEH(object):
         self.total = 0
         self.n = n
         self.buckets = deque()
-        self.k = math.ceil(1 / eps)
-        self.bucketThreshold = math.ceil(self.k / 2) + 2
+        self.k = ceil(1 / eps)
+        self.bucketThreshold = ceil(self.k / 2) + 2
 
     def buckets_count(self):
         return len(self.buckets)
@@ -105,8 +104,8 @@ class SumEH(BinaryCounterEH):
         super().__init__(n, eps)
         self.isReal = isReal
         self.resolution = resolution
-        self.lVal = math.ceil(self.k / 2)
-        self.maxBufferSize = math.floor(math.log2(n))
+        self.lVal = ceil(self.k / 2)
+        self.maxBufferSize = floor(log2(n))
         self.buffer = deque()
         self.bufferSum = 0
 
@@ -143,11 +142,11 @@ class SumEH(BinaryCounterEH):
             return []
         num = totalSum + self.lVal
         den = 1 + self.lVal
-        j = int(math.log2(num / den))
+        j = int(log2(num / den))
         posInGroup = num - (den * (2 ** j))
         posMod = posInGroup % (2 ** j)
         lCanonical = [self.lVal + little_endian_bit(posMod, nBit) for nBit in range(j)]
-        lCanonical.append(math.floor(posInGroup / (2 ** j)) + 1)
+        lCanonical.append(floor(posInGroup / (2 ** j)) + 1)
         return lCanonical
 
     def rebucket_from_lcanonical(self, lCanonical):
@@ -280,18 +279,27 @@ class VarBucket(Bucket):
 
 
 class VarEH(object):
+    # todo review timestamp
+    # todo test merging procedure
 
-    def __init__(self, n, eps):
+    def __init__(self, n, eps, maxValue=None):
         self.n = n
         self.k = 9 / (eps ** 2)
         self.buckets = deque([])
         self.lastSuffix = VarBucket(0, 0)
         self.interSuffix = None
 
+        # if resolution is not specified, then amortized running time per element will not be O(1)
+        self.stepsBetweenMerges = int((1 / eps) * log2(n * (maxValue ** 2))) if maxValue is not None else 1
+        # elements processed since last merge
+        self.stepsSinceLastMerge = 0
+
     def add(self, timestamp, value):
         """ Todo overview of procedure """
+        self.stepsSinceLastMerge += 1
+
         # New element does not affect statistics
-        if value == self.buckets[-1].bucketMean:
+        if self.buckets and value == self.buckets[-1].bucketMean:
             self.buckets[-1].nElems += 1
         else:
             self.buckets.append(VarBucket(timestamp, value))
@@ -303,28 +311,10 @@ class VarEH(object):
             self.pop_from_last_suffix()
             self.buckets.popleft()
 
-        # Merge buckets
-        if len(self.buckets) > 2:
-            self.interSuffix = VarBucket(0, 0)
-            i = len(self.buckets) - 3
-            j = i + 1
-            newNElems = self.buckets[i].nElems + self.buckets[j].nElems
-            newVar = self.compute_new_variance(self.buckets[i], self.buckets[j], newNElems)
-            self.update_inter_suffix(len(self.buckets) - 1)
-            while i > 0 and self.k * newVar <= self.interSuffix.var:
-                # Merge buckets with combination rule
-                self.buckets[i].bucketMean = self.compute_new_mean(self.buckets[i], self.buckets[j], newNElems)
-                self.buckets[i].nElems = newNElems
-                self.buckets[i].var = newVar
-                self.buckets[i].timestamp = self.buckets[j].timestamp
-                # Update suffix bucket before deleting
-                self.update_inter_suffix(j)
-                del self.buckets[j]
-                # Prepare for conditional check
-                i -= 1
-                j = i + 1
-                newNElems = self.buckets[i].nElems + self.buckets[j].nElems
-                newVar = self.compute_new_variance(self.buckets[i], self.buckets[j], newNElems)
+        # merge every self.stepsBetweenMerge steps to ensure amortized time O(1) (only if maxValue has been specified)
+        if self.stepsSinceLastMerge == self.stepsBetweenMerges:
+            self.merge_buckets()
+            self.stepsSinceLastMerge = 0
 
     @staticmethod
     def compute_new_mean(bucket1, bucket2, nElems):
@@ -360,8 +350,33 @@ class VarEH(object):
         """ Updates the statistics of the suffix bucket B_m* (in reference) such that it does not take
          into account the oldest bucket anymore: it now represents B_(m-1)* """
         # todo delete statistics from last bucket
-        pass
 
     def get_estimate(self):
-        pass
+        numEst = self.n + 1 - self.buckets[0].timestamp
+        return (self.buckets[0].var / 2 + self.lastSuffix.var +
+                ((numEst * self.lastSuffix.nElems)/(numEst + self.lastSuffix.nElems)) *
+                ((self.buckets[0].bucketMean - self.lastSuffix.nElems)**2))
+
+    def merge_buckets(self):
+        # Merge buckets
+        if len(self.buckets) > 2:
+            self.interSuffix = VarBucket(0, 0)
+            i = len(self.buckets) - 3
+            j = i + 1
+            newNElems = self.buckets[i].nElems + self.buckets[j].nElems
+            newVar = self.compute_new_variance(self.buckets[i], self.buckets[j], newNElems)
+            self.update_inter_suffix(len(self.buckets) - 1)
+            while i > 0 and self.k * newVar <= self.interSuffix.var:
+                self.buckets[i].bucketMean = self.compute_new_mean(self.buckets[i], self.buckets[j], newNElems)
+                self.buckets[i].nElems = newNElems
+                self.buckets[i].var = newVar
+                self.buckets[i].timestamp = self.buckets[j].timestamp
+                # Update intermediate suffix bucket before deleting the bucket
+                self.update_inter_suffix(j)
+                del self.buckets[j]
+                # Prepare for conditional check
+                j = i
+                i -= 1
+                newNElems = self.buckets[i].nElems + self.buckets[j].nElems
+                newVar = self.compute_new_variance(self.buckets[i], self.buckets[j], newNElems)
 
