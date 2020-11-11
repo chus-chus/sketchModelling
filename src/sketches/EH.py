@@ -281,15 +281,15 @@ class VarBucket(Bucket):
 class Counter(object):
 
     def __init__(self, upperLimit):
-        self.value = 0
+        self.step = 0
         self.upperLimit = upperLimit
 
     def increment(self):
-        if self.value < self.upperLimit:
-            self.value += 1
+        if self.step < self.upperLimit:
+            self.step += 1
         else:
             # reset
-            self.value = 1
+            self.step = 1
 
     def dist_between_ticks(self, tick1, tick2):
         if tick1 <= tick2:
@@ -308,7 +308,7 @@ class VarEH(object):
         self.buckets = deque([])
         self.lastSuffix = VarBucket(0, 0)
         self.interSuffix = None
-        self.timestampCounter = Counter(n)
+        self.timeCounter = Counter(n)
 
         # if resolution is not specified, then amortized running time per element will not be O(1)
         self.stepsBetweenMerges = int((1 / eps) * log2(n * (maxValue ** 2))) if maxValue is not None else 1
@@ -318,16 +318,18 @@ class VarEH(object):
     def add(self, timestamp, value):
         """ Todo overview of procedure """
         self.stepsSinceLastMerge += 1
+        self.timeCounter.increment()
 
         # New element does not affect statistics
         if self.buckets and value == self.buckets[-1].bucketMean:
             self.buckets[-1].nElems += 1
         else:
-            self.buckets.append(VarBucket(timestamp, value))
+            self.buckets.append(VarBucket(self.timeCounter.step, value))
             self.insert_into_last_suffix()
 
-        # Delete expired bucket
-        if self.buckets[0].timestamp <= timestamp - self.n:
+        # Delete expired bucket, check on counter's wraparound property
+        if (self.buckets[0].timestamp == self.buckets[-1].timestamp and self.buckets[0].timestamp is not
+                self.buckets[-1].timestamp):
             # update suffix
             self.pop_from_last_suffix()
             self.buckets.popleft()
@@ -373,16 +375,20 @@ class VarEH(object):
         # todo delete statistics from last bucket
 
     def get_var_estimate(self):
-        numEst = self.n + 1 - self.buckets[0].timestamp
+        numEst = self.n + 1 - self.get_position(self.buckets[0].timestamp)
         return (self.buckets[0].var / 2 + self.lastSuffix.var +
                 ((numEst * self.lastSuffix.nElems)/(numEst + self.lastSuffix.nElems)) *
                 ((self.buckets[0].bucketMean - self.lastSuffix.bucketMean)**2))
 
     def get_mean_estimate(self):
-        numEst = self.n + 1 - self.buckets[0].timestamp
+        numEst = self.n + 1 - self.get_position(self.buckets[0].timestamp)
         return (((numEst * self.buckets[0].bucketMean) +
                  (self.lastSuffix.nElems * self.lastSuffix.bucketMean)) /
                 (numEst + self.lastSuffix.nElems))
+
+    def get_position(self, timestamp):
+        """ Gets position of an element in the EH (from 1 to n) based on its timestamp. """
+        return self.timeCounter.dist_between_ticks(timestamp, self.buckets[-1].timestamp) + 1
 
     def merge_buckets(self):
         # Merge buckets
