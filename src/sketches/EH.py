@@ -278,6 +278,26 @@ class VarBucket(Bucket):
         self.var = 0
 
 
+class Counter(object):
+
+    def __init__(self, upperLimit):
+        self.value = 0
+        self.upperLimit = upperLimit
+
+    def increment(self):
+        if self.value < self.upperLimit:
+            self.value += 1
+        else:
+            # reset
+            self.value = 1
+
+    def dist_between_ticks(self, tick1, tick2):
+        if tick1 <= tick2:
+            return tick2 - tick1
+        else:
+            return self.upperLimit - tick1 + tick2
+
+
 class VarEH(object):
     # todo review timestamp
     # todo test merging procedure
@@ -288,6 +308,7 @@ class VarEH(object):
         self.buckets = deque([])
         self.lastSuffix = VarBucket(0, 0)
         self.interSuffix = None
+        self.timestampCounter = Counter(n)
 
         # if resolution is not specified, then amortized running time per element will not be O(1)
         self.stepsBetweenMerges = int((1 / eps) * log2(n * (maxValue ** 2))) if maxValue is not None else 1
@@ -351,11 +372,17 @@ class VarEH(object):
          into account the oldest bucket anymore: it now represents B_(m-1)* """
         # todo delete statistics from last bucket
 
-    def get_estimate(self):
+    def get_var_estimate(self):
         numEst = self.n + 1 - self.buckets[0].timestamp
         return (self.buckets[0].var / 2 + self.lastSuffix.var +
                 ((numEst * self.lastSuffix.nElems)/(numEst + self.lastSuffix.nElems)) *
-                ((self.buckets[0].bucketMean - self.lastSuffix.nElems)**2))
+                ((self.buckets[0].bucketMean - self.lastSuffix.bucketMean)**2))
+
+    def get_mean_estimate(self):
+        numEst = self.n + 1 - self.buckets[0].timestamp
+        return (((numEst * self.buckets[0].bucketMean) +
+                 (self.lastSuffix.nElems * self.lastSuffix.bucketMean)) /
+                (numEst + self.lastSuffix.nElems))
 
     def merge_buckets(self):
         # Merge buckets
