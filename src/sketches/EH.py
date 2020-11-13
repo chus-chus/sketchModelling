@@ -302,34 +302,47 @@ class VarEH(object):
     # todo review timestamp
     # todo test merging procedure
 
+    def num_elements(self):
+        nElems = 0
+        for bucket in self.buckets:
+            nElems += bucket.nElems
+        return nElems
+
+    def print_eh(self):
+        for i in range(len(self.buckets)-1, -1, -1):
+            print('Bucket ', i, '. nElems = ', self.buckets[i].nElems, ', mean = ', self.buckets[i].bucketMean,
+                  ', var = ', self.buckets[i].var, 'timestamp = ', self.buckets[i].timestamp)
+
     def __init__(self, n, eps, maxValue=None):
         self.n = n
         self.k = 9 / (eps ** 2)
         self.buckets = deque([])
         self.lastSuffix = VarBucket(0, 0)
         self.interSuffix = None
-        self.timeCounter = Counter(n)
+        self.timeCounter = Counter(2*n)
 
         # if resolution is not specified, then amortized running time per element will not be O(1)
-        self.stepsBetweenMerges = int((1 / eps) * log2(n * (maxValue ** 2))) if maxValue is not None else 1
+        self.stepsBetweenMerges = int(round((1 / eps) * log2(n * (maxValue ** 2)))) if maxValue is not None else 1
         # elements processed since last merge
         self.stepsSinceLastMerge = 0
 
-    def add(self, timestamp, value):
+    def add(self, value):
+        # todo fix variance estimate overreaching
+        # note: timestamp up to 2*n arbitrary
         """ Todo overview of procedure """
         self.stepsSinceLastMerge += 1
         self.timeCounter.increment()
+        self.insert_into_last_suffix(value)
 
         # New element does not affect statistics
         if self.buckets and value == self.buckets[-1].bucketMean:
             self.buckets[-1].nElems += 1
         else:
             self.buckets.append(VarBucket(self.timeCounter.step, value))
-            self.insert_into_last_suffix()
 
         # Delete expired bucket, check on counter's wraparound property
-        if (self.buckets[0].timestamp == self.buckets[-1].timestamp and self.buckets[0].timestamp is not
-                self.buckets[-1].timestamp):
+        # todo expired timestamp not being detected properly
+        if self.get_position(self.buckets[0].timestamp) > self.n:
             # update suffix
             self.pop_from_last_suffix()
             self.buckets.popleft()
@@ -361,26 +374,35 @@ class VarEH(object):
         self.interSuffix.var = self.compute_new_variance(self.buckets[index], self.interSuffix, newNElems)
         self.interSuffix.nElems = newNElems
 
-    def insert_into_last_suffix(self):
+    def insert_into_last_suffix(self, element):
         """ Updates the statistics of the suffix bucket B_m* (in reference) such that it now takes
-        into account the elements in the most recently created bucket. """
-        newNElems = self.lastSuffix.nElems + self.buckets[-1].nElems
-        self.lastSuffix.bucketMean = self.compute_new_mean(self.lastSuffix, self.buckets[-1], newNElems)
-        self.lastSuffix.var = self.compute_new_variance(self.lastSuffix, self.buckets[-1], newNElems)
+        into account another element. """
+        newNElems = self.lastSuffix.nElems + 1
+        self.lastSuffix.bucketMean = (self.lastSuffix.bucketMean * self.lastSuffix.nElems + element) / newNElems
+        self.lastSuffix.var = (self.lastSuffix.var + (self.lastSuffix.nElems / newNElems) *
+                               ((self.lastSuffix.bucketMean - element) ** 2))
         self.lastSuffix.nElems = newNElems
 
     def pop_from_last_suffix(self):
         """ Updates the statistics of the suffix bucket B_m* (in reference) such that it does not take
          into account the oldest bucket anymore: it now represents B_(m-1)* """
-        # todo delete statistics from last bucket
+        newNElems = self.lastSuffix.nElems - self.buckets[1].nElems
+        self.lastSuffix.bucketMean = (self.lastSuffix.bucketMean * self.lastSuffix.nElems -
+                                      self.buckets[1].bucketMean * self.buckets[1].nElems) / newNElems
+        self.lastSuffix.var = (self.lastSuffix.var - self.buckets[1].var -
+                               ((newNElems*self.buckets[1].nElems)/self.lastSuffix.nElems) *
+                               ((self.lastSuffix.bucketMean - self.buckets[1].bucketMean) ** 2))
+        self.lastSuffix.nElems = newNElems
 
     def get_var_estimate(self):
+        """ Returns an estimate of the variance within the window. """
         numEst = self.n + 1 - self.get_position(self.buckets[0].timestamp)
         return (self.buckets[0].var / 2 + self.lastSuffix.var +
                 ((numEst * self.lastSuffix.nElems)/(numEst + self.lastSuffix.nElems)) *
                 ((self.buckets[0].bucketMean - self.lastSuffix.bucketMean)**2))
 
     def get_mean_estimate(self):
+        """ Returns an estimate of the mean within the window. """
         numEst = self.n + 1 - self.get_position(self.buckets[0].timestamp)
         return (((numEst * self.buckets[0].bucketMean) +
                  (self.lastSuffix.nElems * self.lastSuffix.bucketMean)) /
@@ -399,14 +421,17 @@ class VarEH(object):
             newNElems = self.buckets[i].nElems + self.buckets[j].nElems
             newVar = self.compute_new_variance(self.buckets[i], self.buckets[j], newNElems)
             self.update_inter_suffix(len(self.buckets) - 1)
-            while i > 0 and self.k * newVar <= self.interSuffix.var:
-                self.buckets[i].bucketMean = self.compute_new_mean(self.buckets[i], self.buckets[j], newNElems)
-                self.buckets[i].nElems = newNElems
-                self.buckets[i].var = newVar
-                self.buckets[i].timestamp = self.buckets[j].timestamp
-                # Update intermediate suffix bucket before deleting the bucket
-                self.update_inter_suffix(j)
-                del self.buckets[j]
+            while i > 0:
+                if self.k * newVar <= self.interSuffix.var:
+                    self.buckets[i].bucketMean = self.compute_new_mean(self.buckets[i], self.buckets[j], newNElems)
+                    self.buckets[i].nElems = newNElems
+                    self.buckets[i].var = newVar
+                    self.buckets[i].timestamp = self.buckets[j].timestamp
+                    # Update intermediate suffix bucket before deleting the bucket
+                    self.update_inter_suffix(j)
+                    del self.buckets[j]
+                else:
+                    self.update_inter_suffix(j)
                 # Prepare for conditional check
                 j = i
                 i -= 1
