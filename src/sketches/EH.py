@@ -7,10 +7,8 @@ from math import ceil, floor, log2
 # ... b2^3 b2^2 b2^1 b2^0
 
 # todo update struct for buckets to allow for constant delete time (mid of struct)
-# todo document
 # todo merge sumEH and meanEH
 # todo assert isinstace of values passed
-# todo recycle timestamps
 
 
 class Bucket(object):
@@ -24,6 +22,8 @@ class Bucket(object):
 class BinaryCounterEH(object):
     """ Solves the Basic Counting problem, counting the number of elements in a window of length n with a relative error
         eps. """
+
+    # todo recycle timestamps
 
     def __init__(self, n, eps):
         self.total = 0
@@ -62,7 +62,7 @@ class BinaryCounterEH(object):
         bucketIndex = len(self.buckets) - 1
         formerBucket = self.buckets[bucketIndex]
         bucketIndex -= 1
-        while bucketIndex > 0:
+        while bucketIndex >= 0:
             try:
                 # will break if the oldest bucket is merged
                 latterBucket = self.buckets[bucketIndex]
@@ -75,14 +75,10 @@ class BinaryCounterEH(object):
             if numberOfSameCount == self.bucketThreshold:
                 formerBucket.nElems += latterBucket.nElems
                 del self.buckets[bucketIndex]
-                # todo revise, indexes do change
-                # if buckets are merged, next element of deque moves into
-                # the position of the deleted bucket. So, index does not change,
-                # as it now points to a latter bucket and formerBucket is updated
-                # from the merge operation.
+                # index now points to formerBucket.
             else:
                 formerBucket = latterBucket
-                bucketIndex -= 1
+            bucketIndex -= 1
 
     def get_estimate(self):
         if self.buckets_count() == 0:
@@ -319,7 +315,14 @@ class VarEH(object):
     of the data is known a priori.
 
     Note that although the guarantees for the maximum relative error for the estimate of the mean are not presented in
-    the paper, but almost always hold experimentally. # todo test thoroughly"""
+    the paper, but almost always hold experimentally.
+
+    In this documentation we adopt the notation of the paper, where buckets are refered to as B_i, 1 <= i <= m,
+    B_1 being the most recent one and B_m being the oldest one. A suffix bucket B_i* contains the statistics of all
+    elements arrived after the most recent element of the bucket B_i. """
+
+    # todo test thoroughly
+    # todo make max value of wraparaound timestamp consistent.
 
     def num_elements(self):
 
@@ -346,14 +349,12 @@ class VarEH(object):
         self.interSuffix = None
         self.timeCounter = Counter(2*n)
 
-        # If resolution is not specified, then amortized running time per element will not be O(1)
         self.stepsBetweenMerges = int(round((1 / eps) * log2(n * (maxValue ** 2)))) if maxValue is not None else 1
         # Elements processed since last merge
         self.stepsSinceLastMerge = 0
 
     def add(self, value):
 
-        # todo make max value of wraparaound timestamp consistent.
         """ Process a new element arrival, updating the statistics of the structure. If the EH is empty, just insert it.
             If there's at least one element:
                 1. Update B_m* (lastSuffix)
@@ -451,15 +452,25 @@ class VarEH(object):
         return self.timeCounter.dist_between_ticks(timestamp, self.buckets[-1].timestamp) + 1
 
     def merge_buckets(self):
-        # Merge buckets
+
+        """ Merges buckets following the procedure specified in the paper. Given V_(i,i-1) the variance of the
+        combination of buckets B_i and B_(i-1), V_(i-1)* the variance of the suffix bucket B_(i-1)* and k=9 * (1/eps^2):
+
+            while there exists i > 2:
+                find the smallest i that satisfies k * V_(i,i-1) <= V_(i-1)*
+                merge buckets B_i and B_(i-1)
+
+        Note that V_(i-1)* is computed incrementally. """
+
         if len(self.buckets) > 2:
             self.interSuffix = VarBucket(0, None)
+            # This implementation has the most recent buckets to the end of the structure self.buckets, hence i is
+            # traversed decreasingly.
             i = len(self.buckets) - 3
             j = i + 1
             newNElems = self.buckets[i].nElems + self.buckets[j].nElems
             newVar = self.compute_new_variance(self.buckets[i], self.buckets[j], newNElems)
             self.update_inter_suffix(len(self.buckets) - 1)
-            # here
             while i >= 0:
                 if self.k * newVar <= self.interSuffix.var:
                     self.buckets[i].bucketMean = self.compute_new_mean(self.buckets[i], self.buckets[j], newNElems)
@@ -484,7 +495,6 @@ class VarEH(object):
         represents B_(index+1)*. When called, it assumes that the new elements to include have not been taken into
         account yet. """
 
-        # Reminder: old buckets are in low indexes.
         newNElems = self.interSuffix.nElems + self.buckets[index].nElems
         self.interSuffix.bucketMean = self.compute_new_mean(self.buckets[index], self.interSuffix, newNElems)
         self.interSuffix.var = self.compute_new_variance(self.buckets[index], self.interSuffix, newNElems)

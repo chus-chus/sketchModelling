@@ -11,8 +11,8 @@ For now, these are the sketches and functionalities included:
     - Sum
         - Positive integers [[1]](#1)
         - Extension over positive real numbers (own)
-    - Mean (positive real)
-    - (in construction) Variance [[2]](#2)
+    - Mean (positive real and real, the former more space efficient)
+    - Variance (real) [[2]](#2)
 
 - **Other utils**
     - DataFrame sketch windower: returns a ``pandas.DataFrame`` with the results of applying a 
