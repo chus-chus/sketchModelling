@@ -323,6 +323,8 @@ class Counter(object):
 
 class VarEH(object):
 
+    # todo add reset function, eh summary function, robustness when returning estimates
+
     """ A variation of the original EH structure that keeps track of the variance (k-medians with k = 1) to some eps
     of relative error. Although less space-efficient than the original, it still is sublinear to window length and
     provides approximations in constant time. Moreover, it is more flexible in terms of the functions it supports and
@@ -391,7 +393,7 @@ class VarEH(object):
         # order of operations crucial!
         newNElems = self.lastSuffix.nElems + 1
 
-        self.lastSuffix.var += self.lastSuffix.nElems * ((self.lastSuffix.bucketMean - element) ** 2) / float(newNElems)
+        self.lastSuffix.var += self.lastSuffix.nElems * ((self.lastSuffix.bucketMean - element) ** 2) / newNElems
 
         self.lastSuffix.bucketMean = (self.lastSuffix.bucketMean * self.lastSuffix.nElems + element) / newNElems
 
@@ -402,15 +404,21 @@ class VarEH(object):
         """ Updates the statistics of the suffix bucket B_m* (in reference) such that it does not take
          into account the oldest bucket anymore: it now represents B_(m-1)* """
 
-        # order of operations crucial!
         newNElems = self.lastSuffix.nElems - self.buckets[1].nElems
 
-        self.lastSuffix.bucketMean = (self.lastSuffix.bucketMean * self.lastSuffix.nElems -
-                                      self.buckets[1].bucketMean * self.buckets[1].nElems) / newNElems
-        self.lastSuffix.var = (self.lastSuffix.var - self.buckets[1].var -
-                               ((newNElems*self.buckets[1].nElems)/self.lastSuffix.nElems) *
-                               ((self.lastSuffix.bucketMean - self.buckets[1].bucketMean) ** 2))
-        self.lastSuffix.nElems = newNElems
+        if newNElems == 0:
+            self.lastSuffix.bucketMean = 0
+            self.lastSuffix.var = 0
+            self.lastSuffix.nElems = 0
+        else:
+            # order of operations crucial!
+            self.lastSuffix.bucketMean = (self.lastSuffix.bucketMean * self.lastSuffix.nElems -
+                                          self.buckets[1].bucketMean * self.buckets[1].nElems) / newNElems
+
+            self.lastSuffix.var = (self.lastSuffix.var - self.buckets[1].var -
+                                   ((newNElems*self.buckets[1].nElems)/self.lastSuffix.nElems) *
+                                   ((self.lastSuffix.bucketMean - self.buckets[1].bucketMean) ** 2))
+            self.lastSuffix.nElems = newNElems
 
     def merge_buckets(self):
 
