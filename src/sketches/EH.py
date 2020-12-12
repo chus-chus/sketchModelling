@@ -2,7 +2,6 @@
 
 from collections import deque
 from math import ceil, floor, log2
-import numpy as np
 
 # Older buckets are to the left. The most recent ones are to the right:
 # ... b2^3 b2^2 b2^1 b2^0
@@ -499,7 +498,7 @@ class VarEH(object):
         numEst = self.n + 1 - self.get_timestamp_position(self.buckets[0].timestamp)
         return (self.buckets[0].var / 2 + self.lastSuffix.var +
                 ((numEst * self.lastSuffix.nElems)/(numEst + self.lastSuffix.nElems)) *
-                ((self.buckets[0].bucketMean - self.lastSuffix.bucketMean)**2))
+                ((self.buckets[0].bucketMean - self.lastSuffix.bucketMean)**2)) / (numEst + self.lastSuffix.nElems - 1)
 
     def get_mean_estimate(self):
 
