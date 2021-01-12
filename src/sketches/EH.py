@@ -268,11 +268,13 @@ class ExactWindow(object):
         return sum(self.buffer) / self.nElems
 
     def variance(self):
+        if len(self.buffer) <= 1:
+            return 0
         variance = 0
         mean = self.mean()
         for i in range(len(self.buffer)):
             variance += (self.buffer[i] - mean) ** 2
-        return variance
+        return variance / float(len(self.buffer) - 1)
 
     def empty(self):
         return True if self.nElems == 0 else False
@@ -508,3 +510,9 @@ class VarEH(object):
         return (((numEst * self.buckets[0].bucketMean) +
                  (self.lastSuffix.nElems * self.lastSuffix.bucketMean)) /
                 (numEst + self.lastSuffix.nElems))
+
+    def empty(self):
+
+        """ Tells if there are no buckets in the sketch. """
+
+        return False if self.buckets else True

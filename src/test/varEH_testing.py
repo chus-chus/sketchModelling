@@ -68,7 +68,7 @@ if __name__ == "__main__":
     random.seed(888)
 
     winLen = 100
-    eps = 0.01
+    eps = 0.05
 
     mod = VarEH(winLen, eps, maxValue=10)
     w = ExactWindow(winLen)
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     numVarViolations = 0
     numMeanViolations = 0
     for i in range(100000):
-        elem = random.uniform(-10, 2)
+        elem = random.uniform(0, 1)
         w.add(elem)
         mod.add(elem)
 
@@ -93,6 +93,8 @@ if __name__ == "__main__":
         realVar = w.variance()
         estMean = mod.get_mean_estimate()
         estVar = mod.get_var_estimate()
+
+        print(estMean, realMean)
 
         # avoid division by 0
         if realVar > 0 and i > winLen:

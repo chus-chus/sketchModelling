@@ -10,10 +10,10 @@ import altair_viewer
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.sketches.EH import MeanEH, ExactWindow
+from src.sketches.EH import MeanEH, ExactWindow, VarEH
 
 # todo change save paths, add evaluation of models over exact windowed streams
-# todo test positive integers
+from src.utils.csvToArff import pd_to_arff
 
 alt.data_transformers.disable_max_rows()
 
@@ -49,40 +49,49 @@ def incremental_drift(conceptChangeRange, concept1Offset, concept2Offset):
     return incrementalDrift
 
 
-def apply_increasing_mean_EH(data, windowLengthsList, eps, realNums=False, res=100):
+def apply_increasing_EH(data, windowLengthsList, eps, realNums=False, maxValue=100, EHtype='mean'):
     # assumes target is at the end!
     names = None
+
     if isinstance(data, pd.DataFrame):
         names = data.columns
         data = np.array(data)
+
     if names is not None:
-        colNames = [featureName + '_' + str(windowLen)
-                    for featureName in list(names[:-1])
-                    for windowLen in windowLengthsList]
+        colNames = []
+        for featureName in list(names[:-1]):
+            for windowLen in windowLengthsList:
+                colNames.append(featureName + '_' + str(windowLen) + 'mean')
+                colNames.append(featureName + '_' + str(windowLen) + 'var')
     else:
-        colNames = ['f' + str(featurePos) + '_' + str(windowLen)
-                    for featurePos in range(1, len(data[0]))
-                    for windowLen in windowLengthsList]
+        colNames = []
+        for featurePos in range(1, len(data[0])):
+            for windowLen in windowLengthsList:
+                colNames.append('f' + str(featurePos) + '_' + str(windowLen) + 'mean')
+                colNames.append('f' + str(featurePos) + '_' + str(windowLen) + 'var')
+    print(colNames)
+
     # n histograms for each feature
-    hists = [[MeanEH(windowLength, eps, isReal=realNums, resolution=res) for windowLength in windowLengthsList] for _ in range(len(data[0])-1)]
-    means = []
+    hists = [[VarEH(windowLength, eps, maxValue=maxValue) for windowLength in windowLengthsList] for _ in range(len(data[0])-1)]
+    estimates = []
     for i in range(len(data)):
         for j in range(len(windowLengthsList)):
             for x in range(len(data[0]) - 1):
-                hists[x][j].add(i, data[i][x])
-        if i >= windowLengthsList[-1]:
-            point = [[] for _ in range(len(data[0]) - 1)]
-            for x in range(len(data[0]) - 1):
-                for windowIndex in range(len(windowLengthsList)):
-                    if not hists[x][windowIndex].empty():
-                        point[x].append(hists[x][windowIndex].get_estimate())
-                    else:
-                        point[x].append(0)
-            point = [item for feature in point for item in feature]
-            means.append(pd.DataFrame(data=[point], columns=colNames))
-    meanDf = pd.concat(means, ignore_index=True)
-    meanDf[names[-1]] = data[windowLengthsList[-1]:, -1]
-    return meanDf
+                hists[x][j].add(data[i][x])
+        point = [[] for _ in range(len(data[0]) - 1)]
+        for x in range(len(data[0]) - 1):
+            for windowIndex in range(len(windowLengthsList)):
+                if not hists[x][windowIndex].empty():
+                    point[x].append(hists[x][windowIndex].get_mean_estimate())
+                    point[x].append(hists[x][windowIndex].get_var_estimate())
+                else:
+                    point[x].append(0)
+                    point[x].append(0)
+        point = [item for feature in point for item in feature]
+        estimates.append(pd.DataFrame(data=[point], columns=colNames))
+    estimateDf = pd.concat(estimates, ignore_index=True)
+    estimateDf[names[-1]] = data[:, -1]
+    return estimateDf
 
 
 def apply_increasing_mean(data, windowLengthsList):
@@ -110,7 +119,7 @@ def apply_increasing_mean(data, windowLengthsList):
 def model_with_eh_means(suddenDriftSeparated, suddenDriftMixed, reocurringConceptSeparated, reocurringConceptMixed,
                         incrementalDriftSep, incrementalDriftMixed, windowLengths):
     # Sudden drift clearly separated, NB, nwait 50
-    approxMeansDf = apply_increasing_mean_EH(suddenDriftSeparated, windowLengths, 0.01)
+    approxMeansDf = apply_increasing_EH(suddenDriftSeparated, windowLengths, 0.01)
     approxMeansDf.to_csv('./data/processedStreams/sine/EHmeansSuddenDriftSeparated.csv', index=False)
     stream = skm.data.FileStream('./data/processedStreams/sine/EHmeansSuddenDriftSeparated.csv')
     evaluator = skm.evaluation.EvaluatePrequential(n_wait=50, show_plot=False, pretrain_size=200, max_samples=20000,
@@ -118,7 +127,7 @@ def model_with_eh_means(suddenDriftSeparated, suddenDriftMixed, reocurringConcep
     evaluator.evaluate(stream=stream, model=skm.bayes.NaiveBayes())
 
     # Sudden drift halfway mixed, NB, nwait 50
-    approxMeansDf = apply_increasing_mean_EH(suddenDriftMixed, windowLengths, 0.01)
+    approxMeansDf = apply_increasing_EH(suddenDriftMixed, windowLengths, 0.01)
     approxMeansDf.to_csv('./data/processedStreams/sine/EHmeansSuddenDriftMixed.csv', index=False)
     stream = skm.data.FileStream('./data/processedStreams/sine/EHmeansSuddenDriftMixed.csv')
     evaluator = skm.evaluation.EvaluatePrequential(n_wait=50, show_plot=False, pretrain_size=200, max_samples=20000,
@@ -126,7 +135,7 @@ def model_with_eh_means(suddenDriftSeparated, suddenDriftMixed, reocurringConcep
     evaluator.evaluate(stream=stream, model=skm.bayes.NaiveBayes())
 
     # Reocurring concept clearly separated, NB, blocks of 1250, nwait 10
-    approxMeansDf = apply_increasing_mean_EH(reocurringConceptSeparated, windowLengths, 0.01)
+    approxMeansDf = apply_increasing_EH(reocurringConceptSeparated, windowLengths, 0.01)
     approxMeansDf.to_csv('./data/processedStreams/sine/EHmeansReocurringSeparated.csv', index=False)
     stream = skm.data.FileStream('./data/processedStreams/sine/EHmeansReocurringSeparated.csv')
     evaluator = skm.evaluation.EvaluatePrequential(n_wait=10, show_plot=False, pretrain_size=200, max_samples=20000,
@@ -134,7 +143,7 @@ def model_with_eh_means(suddenDriftSeparated, suddenDriftMixed, reocurringConcep
     evaluator.evaluate(stream=stream, model=skm.bayes.NaiveBayes())
 
     # Reocurring concept mixed, NB, blocks of 1250, nwait 10
-    approxMeansDf = apply_increasing_mean_EH(reocurringConceptMixed, windowLengths, 0.01)
+    approxMeansDf = apply_increasing_EH(reocurringConceptMixed, windowLengths, 0.01)
     approxMeansDf.to_csv('./data/processedStreams/sine/EHmeansReocurringMixed.csv', index=False)
     stream = skm.data.FileStream('./data/processedStreams/sine/EHmeansReocurringMixed.csv')
     evaluator = skm.evaluation.EvaluatePrequential(n_wait=10, show_plot=False, pretrain_size=200, max_samples=20000,
@@ -142,7 +151,7 @@ def model_with_eh_means(suddenDriftSeparated, suddenDriftMixed, reocurringConcep
     evaluator.evaluate(stream=stream, model=skm.bayes.NaiveBayes())
 
     # Incremental drift sep, NB, nwait 50
-    approxMeansDf = apply_increasing_mean_EH(incrementalDriftSep, windowLengths, 0.01)
+    approxMeansDf = apply_increasing_EH(incrementalDriftSep, windowLengths, 0.01)
     approxMeansDf.to_csv('./data/processedStreams/sine/EHmeansIncrementalSeparated.csv', index=False)
     stream = skm.data.FileStream('./data/processedStreams/sine/EHmeansIncrementalSeparated.csv')
     evaluator = skm.evaluation.EvaluatePrequential(n_wait=10, show_plot=False, pretrain_size=200, max_samples=20000,
@@ -150,7 +159,7 @@ def model_with_eh_means(suddenDriftSeparated, suddenDriftMixed, reocurringConcep
     evaluator.evaluate(stream=stream, model=skm.bayes.NaiveBayes())
 
     # Incremental drift mixed, NB, nwait 50
-    approxMeansDf = apply_increasing_mean_EH(incrementalDriftMixed, windowLengths, 0.01)
+    approxMeansDf = apply_increasing_EH(incrementalDriftMixed, windowLengths, 0.01)
     approxMeansDf.to_csv('./data/processedStreams/sine/EHmeansIncrementalMixed.csv', index=False)
     stream = skm.data.FileStream('./data/processedStreams/sine/EHmeansIncrementalMixed.csv')
     evaluator = skm.evaluation.EvaluatePrequential(n_wait=10, show_plot=False, pretrain_size=200, max_samples=20000,
@@ -248,48 +257,74 @@ def plot_results_means():
 if __name__ == "__main__":
     random.seed(888)
 
-    # Data generation
-    # Sudden drift
-    suddenDriftSeparated = np.array(sudden_drift(2, 4))
     suddenDriftMixed = np.array(sudden_drift(2, 3))
-    suddenSepDf = pd.DataFrame(data={'value': suddenDriftSeparated[:, 0], 'target': suddenDriftSeparated[:, 1]})
     suddenMixedDf = pd.DataFrame(data={'value': suddenDriftMixed[:, 0], 'target': suddenDriftMixed[:, 1]})
-    suddenSepDf.to_csv('./data/rawStreams/sine/SuddenDriftSeparated.csv', index=False)
-    suddenMixedDf.to_csv('./data/rawStreams/sine/SuddenDriftMixed.csv', index=False)
-
-    # Reocurring concept
-    blockedData = [suddenDriftSeparated[x:x + 1250] for x in range(0, len(suddenDriftSeparated), 1250)]
-    random.shuffle(blockedData)
-    reocurringConceptSeparated = np.array(list(itertools.chain.from_iterable(blockedData)))
-    reocurringSepDf = pd.DataFrame(data={'value': reocurringConceptSeparated[:, 0], 'target': reocurringConceptSeparated[:, 1]})
-    reocurringSepDf.to_csv('./data/rawStreams/sine/ReocurringSeparated.csv', index=False)
+    suddenMixed = apply_increasing_EH(suddenMixedDf, windowLengthsList=[10, 50, 100, 500, 1000], eps=0.05)
+    #pd_to_arff(suddenMixed, 'suddenMixedEH', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
+    #pd_to_arff(suddenMixedDf, 'suddenMixed', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
+    suddenMixed.insert(0, 'value', suddenMixedDf['value'])
+    pd_to_arff(suddenMixed, 'suddenMixedEHplus', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
 
     blockedData = [suddenDriftMixed[x:x + 1250] for x in range(0, len(suddenDriftMixed), 1250)]
     random.shuffle(blockedData)
     reocurringConceptMixed = np.array(list(itertools.chain.from_iterable(blockedData)))
     reocurringMixedDf = pd.DataFrame(data={'value': reocurringConceptMixed[:, 0], 'target': reocurringConceptMixed[:, 1]})
-    reocurringMixedDf.to_csv('./data/rawStreams/sine/ReocurringMixed.csv', index=False)
-
-    # Incremental drift
-    incrementalDriftSep = np.array(incremental_drift([8000, 12000], 2, 4))
-    incrementalSepDf = pd.DataFrame(data={'value': incrementalDriftSep[:, 0], 'target': incrementalDriftSep[:, 1]})
-    incrementalSepDf.to_csv('./data/rawStreams/sine/IncrementalSeparated.csv', index=False)
+    reocurringMixed = apply_increasing_EH(reocurringMixedDf, windowLengthsList=[10, 50, 100, 500, 1000], eps=0.05)
+    #pd_to_arff(reocurringMixed, 'reocurringMixedEH', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
+    #pd_to_arff(reocurringMixedDf, 'reocurringMixed', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
+    reocurringMixed.insert(0, 'value', reocurringMixedDf['value'])
+    pd_to_arff(reocurringMixed, 'reocurringMixedEHplus', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
 
     incrementalDriftMixed = np.array(incremental_drift([8000, 12000], 2, 3))
     incrementalMixedDf = pd.DataFrame(data={'value': incrementalDriftMixed[:, 0], 'target': incrementalDriftMixed[:, 1]})
-    incrementalMixedDf.to_csv('./data/rawStreams/sine/IncrementalMixed.csv', index=False)
+    incrementalMixed = apply_increasing_EH(incrementalMixedDf, windowLengthsList=[10, 50, 100, 500, 1000], eps=0.05)
+    #pd_to_arff(incrementalMixed, 'incrementalMixedEH', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
+    #pd_to_arff(incrementalMixedDf, 'incrementalMixed', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
+    incrementalMixed.insert(0, 'value', incrementalMixedDf['value'])
+    pd_to_arff(incrementalMixed, 'incrementalMixedEHplus', './data/processedStreams/newsine_mixed/', 'ORDINAL', ['0', '1'])
 
-    # Modelling
-
-    windowLengths = [10, 100, 200, 400, 800, 1600, 3200]
-
-    # model_with_eh_means(suddenDriftSeparated, suddenDriftMixed, reocurringConceptSeparated, reocurringConceptMixed,
-    #                    incrementalDriftSep, incrementalDriftMixed, windowLengths)
-
-    # model_with_true_means(suddenDriftSeparated, suddenDriftMixed, reocurringConceptSeparated, reocurringConceptMixed,
-    #                       incrementalDriftSep, incrementalDriftMixed, windowLengths)
-
-    plot_results_means()
+    # Data generation
+    # Sudden drift
+    # suddenDriftSeparated = np.array(sudden_drift(2, 4))
+    # suddenDriftMixed = np.array(sudden_drift(2, 3))
+    # suddenSepDf = pd.DataFrame(data={'value': suddenDriftSeparated[:, 0], 'target': suddenDriftSeparated[:, 1]})
+    # suddenMixedDf = pd.DataFrame(data={'value': suddenDriftMixed[:, 0], 'target': suddenDriftMixed[:, 1]})
+    # suddenSepDf.to_csv('./data/rawStreams/sine/SuddenDriftSeparated.csv', index=False)
+    # suddenMixedDf.to_csv('./data/rawStreams/sine/SuddenDriftMixed.csv', index=False)
+    #
+    # # Reocurring concept
+    # blockedData = [suddenDriftSeparated[x:x + 1250] for x in range(0, len(suddenDriftSeparated), 1250)]
+    # random.shuffle(blockedData)
+    # reocurringConceptSeparated = np.array(list(itertools.chain.from_iterable(blockedData)))
+    # reocurringSepDf = pd.DataFrame(data={'value': reocurringConceptSeparated[:, 0], 'target': reocurringConceptSeparated[:, 1]})
+    # reocurringSepDf.to_csv('./data/rawStreams/sine/ReocurringSeparated.csv', index=False)
+    #
+    # blockedData = [suddenDriftMixed[x:x + 1250] for x in range(0, len(suddenDriftMixed), 1250)]
+    # random.shuffle(blockedData)
+    # reocurringConceptMixed = np.array(list(itertools.chain.from_iterable(blockedData)))
+    # reocurringMixedDf = pd.DataFrame(data={'value': reocurringConceptMixed[:, 0], 'target': reocurringConceptMixed[:, 1]})
+    # reocurringMixedDf.to_csv('./data/rawStreams/sine/ReocurringMixed.csv', index=False)
+    #
+    # # Incremental drift
+    # incrementalDriftSep = np.array(incremental_drift([8000, 12000], 2, 4))
+    # incrementalSepDf = pd.DataFrame(data={'value': incrementalDriftSep[:, 0], 'target': incrementalDriftSep[:, 1]})
+    # incrementalSepDf.to_csv('./data/rawStreams/sine/IncrementalSeparated.csv', index=False)
+    #
+    # incrementalDriftMixed = np.array(incremental_drift([8000, 12000], 2, 3))
+    # incrementalMixedDf = pd.DataFrame(data={'value': incrementalDriftMixed[:, 0], 'target': incrementalDriftMixed[:, 1]})
+    # incrementalMixedDf.to_csv('./data/rawStreams/sine/IncrementalMixed.csv', index=False)
+    #
+    # # Modelling
+    #
+    # windowLengths = [10, 100, 200, 400, 800, 1600, 3200]
+    #
+    # # model_with_eh_means(suddenDriftSeparated, suddenDriftMixed, reocurringConceptSeparated, reocurringConceptMixed,
+    # #                    incrementalDriftSep, incrementalDriftMixed, windowLengths)
+    #
+    # # model_with_true_means(suddenDriftSeparated, suddenDriftMixed, reocurringConceptSeparated, reocurringConceptMixed,
+    # #                       incrementalDriftSep, incrementalDriftMixed, windowLengths)
+    #
+    # plot_results_means()
 
 
 
