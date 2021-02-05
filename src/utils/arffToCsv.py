@@ -1,11 +1,3 @@
-#########################################
-# Project   : ARFF to CSV converter     #
-# Created   : 10/01/17 11:08:06         #
-# Author    : haloboy777                #
-# Licence   : MIT                       #
-#########################################
-
-
 # Importing library
 import os
 
