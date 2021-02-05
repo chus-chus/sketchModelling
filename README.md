@@ -4,7 +4,7 @@
 This repository contains source code supporting a series of experiments on how streaming (in particular sketches) 
 techniques can aid in the modelling of time series.
 
-For now, these are the sketches and functionalities included:
+These are the sketches and functionalities included:
 
 - **Exponential Histogram**, with the following uses:
     - Binary Counter [[1]](#1)
@@ -23,8 +23,6 @@ For now, these are the sketches and functionalities included:
         (``arff`` is a data format used by ML frameworks such as [Weka](https://www.cs.waikato.ac.nz/ml/weka/) and 
         [MOA](https://moa.cms.waikato.ac.nz/))
         
-**WARNING**: constant updates coming!
-
 ## References
 <a id="1">[1]</a> 
 M. Datar et al. (2002). 
