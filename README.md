@@ -1,12 +1,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-## Streaming techniques for learning 
+## Exponential Histograms for deep learning 
 
-This repository contains source code supporting a series of experiments on how streaming (in particular sketches) 
-techniques can aid in the modelling of time series.
+This repository contains source code supporting a series of experiments on how streaming (in particular Exponential Histogram sketches) 
+techniques can aid in the modelling of temporal data.
 
-These are the sketches and functionalities included:
+These are the sketches, deep learning models and functionalities included:
 
-- **Exponential Histogram**, with the following uses:
+- **Exponential Histogram**, capable of keeping track of the following statistics:
     - Binary Counter [[1]](#1)
     - Sum
         - Positive integers [[1]](#1)
@@ -14,9 +14,12 @@ These are the sketches and functionalities included:
     - Mean (positive real and real, the former more space efficient)
     - Variance (real) [[2]](#2)
 
+- **EHRNN**
+    A modified Elmann Network (RNN) that efficiently keeps track of hidden state statistics across multiple time resolutions via Exponential Histograms.        Implemented in PyTorch.
+
 - **Other utils**
     - DataFrame sketch windower: returns a ``pandas.DataFrame`` with the results of applying a 
-    summarizing sketch over a/some windows (only Exponential Histogram for now).
+    summarizing sketch over a/some windows (Exponential Histograms). Useful for obtaining descriptive statistics and summarization of data trends across time resolutions.
     - Format converters
         - ``csv`` to ``arff`` and viceversa
         - ``pandas.DataFrame`` to ``arff``  
