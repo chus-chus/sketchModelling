@@ -1,12 +1,12 @@
 ## l-canonical Representation
 
 This guide is made so that a basic understanding of the l-canonical algorithm can be acquired. It should
-help in understanding the implementation and the reasoning behind it (see `varEH.py`).
+help in understanding the implementation and the reasoning behind it (see `sumEH.py`).
 
 The l-canonical representation groups natural numbers into differently sized groups determined by the
 length of the representation itself `[k_0, k_1, ..., k_n]`. Equivalently, we consider each natural as
 the step our algorithm is in (1 item inserted, 2 items inserted, ...). For example, with `l = 2` 
-(example from [Twitter's Algebird](https://twitter.github.io/algebird/datatypes/approx/exponential_histogram.html):
+(example from [Twitter's Algebird](https://twitter.github.io/algebird/datatypes/approx/exponential_histogram.html)):
 
             Size of buckets
     Step 1:      1          | Group 0
