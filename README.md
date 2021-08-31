@@ -32,7 +32,7 @@ These are the sketches, deep learning models and functionalities included:
 If you use this code in your research / application, please cite the current pre-print.
 
 ``` 
-@article{antonanzas2021sketches,
+@misc{antonanzas2021sketches,
          title={Sketches for Time-Dependent Machine Learning}, 
          author={Jesus Antonanzas and Marta Arias and Albert Bifet},
          year={2021},
