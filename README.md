@@ -3,7 +3,12 @@
 
 This repository contains source code supporting a series of experiments on how streaming (in particular sketches) 
 techniques can aid in the modelling of time series. The results can be found in the 
-[paper](https://arxiv.org/abs/2108.11923) (currently pre-print).
+[paper](https://arxiv.org/abs/2108.11923).
+
+**Installation**
+```
+pip install -i https://test.pypi.org/simple/ skcm
+```
 
 These are the sketches, deep learning models and functionalities included:
 
